@@ -6,16 +6,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('Fetching from repo:', process.env.ORBIT_PACKAGES_REPO);
+    const repo = process.env.ORBIT_PACKAGES_REPO;
+    const token = process.env.GITHUB_TOKEN;
+
+    if (!repo) {
+      // Fail fast in dev/offline without hanging the UI
+      console.log('ORBIT_PACKAGES_REPO not set; returning empty packages list');
+      return res.status(200).json([]);
+    }
+
+    console.log('Fetching from repo:', repo);
+
+    // Create a short timeout to avoid UI hangs on slow networks
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     const response = await fetch(
-      `https://api.github.com/repos/${process.env.ORBIT_PACKAGES_REPO}/contents`,
+      `https://api.github.com/repos/${repo}/contents`,
       {
         headers: {
-          Authorization: `token ${process.env.GITHUB_TOKEN}`,
+          ...(token ? { Authorization: `token ${token}` } : {}),
           Accept: 'application/vnd.github.v3+json',
         },
+        signal: controller.signal,
       },
-    );
+    ).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       console.error(
@@ -37,15 +51,18 @@ export default async function handler(req, res) {
       try {
         console.log(`Processing folder: ${folder.name}`);
         // Get orbit.lock.json
+        const lockController = new AbortController();
+        const lockTimeout = setTimeout(() => lockController.abort(), 3000);
         const lockResponse = await fetch(
-          `https://api.github.com/repos/${process.env.ORBIT_PACKAGES_REPO}/contents/${folder.name}/orbit.lock.json`,
+          `https://api.github.com/repos/${repo}/contents/${folder.name}/orbit.lock.json`,
           {
             headers: {
-              Authorization: `token ${process.env.GITHUB_TOKEN}`,
+              ...(token ? { Authorization: `token ${token}` } : {}),
               Accept: 'application/vnd.github.v3+json',
             },
+            signal: lockController.signal,
           },
-        );
+        ).finally(() => clearTimeout(lockTimeout));
 
         if (lockResponse.ok) {
           const lockFile = await lockResponse.json();
@@ -80,7 +97,8 @@ export default async function handler(req, res) {
     console.log('Final packages:', packages);
     res.status(200).json(packages);
   } catch (error) {
-    console.error('Error fetching approved packages:', error);
-    res.status(500).json({ error: 'Failed to fetch packages' });
+    console.error('Error fetching approved packages:', error.message || error);
+    // Return empty list on network/timeout errors to keep UI responsive
+    res.status(200).json([]);
   }
 }
