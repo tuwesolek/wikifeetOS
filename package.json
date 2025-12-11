@@ -4,6 +4,7 @@
   "description": "A Web OS-style project for group collaboration",
   "scripts": {
     "dev": "next dev",
+    "dev:host": "next dev -H 0.0.0.0 -p 3000",
     "dev:test-unapproved": "ORBIT_DEV_MODE=true next dev",
     "build": "next build",
     "start": "next start",
