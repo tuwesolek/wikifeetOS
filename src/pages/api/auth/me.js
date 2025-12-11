@@ -7,6 +7,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Fast path: if no token present, avoid DB connection entirely
+    const hasToken = Boolean(
+      req.headers.authorization?.startsWith('Bearer ') || req.cookies?.token,
+    );
+    if (!hasToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     await dbConnect();
     const user = await verifyToken(req);
 
